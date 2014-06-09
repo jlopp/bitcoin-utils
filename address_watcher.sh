@@ -14,6 +14,8 @@ done
 
 # daemon
 while [ true ]; do
+    sleep 600 # only check addresses balances once per ~block
+
     # check the balance of each address
     for (( i = 0; i < ${#btc_addresses[@]}; i++ )); do
         new_balance=$(curl -s https://blockchain.info/q/addressbalance/${btc_addresses[$i]})
@@ -26,5 +28,4 @@ while [ true ]; do
         fi
         sleep 10
     done
-    sleep 600 # no point checking addresses again until next block
 done
