@@ -1,3 +1,7 @@
+# This daemon requires django, the python statsd library, and PSUtil: https://github.com/giampaolo/psutil
+# The daemon reads system metrics and outputs them to StatsD
+# Usage: python systemMetricsDaemon.py &
+
 import os
 import time
 
