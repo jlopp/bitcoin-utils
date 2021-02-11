@@ -2,17 +2,16 @@
 # The daemon reads system metrics and outputs them to StatsD
 # Usage: python systemMetricsDaemon.py &
 
-import os
 import time
-
 from django.conf import settings
-from django.core.management.base import NoArgsCommand
+from django.core.management.base import BaseCommand
 import psutil
-import statsd
+from statsd import StatsClient
+statsd = StatsClient()
 
 last_disk_io  = psutil.disk_io_counters()
 last_net_io   = psutil.net_io_counters()
-gauge = statsd.Gauge('system')
+
 time.sleep(1)
 
 def io_change(last, current):
@@ -21,7 +20,7 @@ def io_change(last, current):
 
 while True:
 
-    memory          = psutil.phymem_usage()
+    memory          = psutil.virtual_memory()
     disk            = psutil.disk_usage("/")
     disk_io         = psutil.disk_io_counters()
     disk_io_change  = io_change(last_disk_io, disk_io)
@@ -31,27 +30,27 @@ while True:
     last_net_io     = net_io
 
     gauges = {
-        "memory.used":        memory.used,
-        "memory.free":        memory.free,
-        "memory.percent":     memory.percent,
-        "cpu.percent":        psutil.cpu_percent(),
-        "load":               os.getloadavg()[0],
-        "disk.size.used":     disk.used,
-        "disk.size.free":     disk.free,
-        "disk.size.percent":  disk.percent,
-        "disk.read.bytes":    disk_io_change["read_bytes"],
-        "disk.read.time":     disk_io_change["read_time"],
-        "disk.write.bytes":   disk_io_change["write_bytes"],
-        "disk.write.time":    disk_io_change["write_time"],
-        "net.in.bytes":       net_io_change["bytes_recv"],
-        "net.in.errors":      net_io_change["errin"],
-        "net.in.dropped":     net_io_change["dropin"],
-        "net.out.bytes":      net_io_change["bytes_sent"],
-        "net.out.errors":     net_io_change["errout"],
-        "net.out.dropped":    net_io_change["dropout"],
+        "system.memory.used":        memory.used,
+        "system.memory.free":        memory.free,
+        "system.memory.percent":     memory.percent,
+        "system.cpu.percent":        psutil.cpu_percent(),
+        "system.load":               psutil.getloadavg()[0],
+        "system.disk.size.used":     disk.used,
+        "system.disk.size.free":     disk.free,
+        "system.disk.size.percent":  disk.percent,
+        "system.disk.read.bytes":    disk_io_change["read_bytes"],
+        "system.disk.read.time":     disk_io_change["read_time"],
+        "system.disk.write.bytes":   disk_io_change["write_bytes"],
+        "system.disk.write.time":    disk_io_change["write_time"],
+        "system.net.in.bytes":       net_io_change["bytes_recv"],
+        "system.net.in.errors":      net_io_change["errin"],
+        "system.net.in.dropped":     net_io_change["dropin"],
+        "system.net.out.bytes":      net_io_change["bytes_sent"],
+        "system.net.out.errors":     net_io_change["errout"],
+        "system.net.out.dropped":    net_io_change["dropout"],
     }
 
     for name, value in gauges.items():
-        gauge.send(name, value)
+        statsd.gauge(name, value)
 
-    time.sleep(1)
+    time.sleep(10)
