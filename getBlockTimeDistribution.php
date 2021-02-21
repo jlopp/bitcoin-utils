@@ -10,6 +10,7 @@ $maxBlockHeight = 670000;
 $heightRange = $maxBlockHeight - $height;
 $slowBlocks = array();
 $secondsBetweenBlocks = array();
+$negativeBlockHeights = array();
 
 // initialize start block vars
 //print_r($bitcoind->getBlockHash($height));exit;
@@ -34,6 +35,11 @@ while ($height < $maxBlockHeight) {
 		$slowBlocks[$height] = $secondsSinceLastBlock;
 	}
 
+	// make a note of this anomaly
+	if ($secondsSinceLastBlock < 0) {
+		$negativeBlockHeights[$height] = $secondsSinceLastBlock;
+	}
+
 	if ($height % 1000 == 0) {
 		$complete = round(100*(($height - $startHeight) / $heightRange),2);
 		echo "$complete%\n";
@@ -46,6 +52,8 @@ while ($height < $maxBlockHeight) {
 
 // sort by seconds ascending
 ksort($secondsBetweenBlocks);
+// sort by block height ascending
+ksort($negativeBlockHeights);
 
 $negativeTimeDeltaCount = 0;
 foreach ($secondsBetweenBlocks as $seconds => $count) {
@@ -58,6 +66,12 @@ foreach ($secondsBetweenBlocks as $seconds => $count) {
 echo "\nExtremely slow blocks\n";
 echo "Block Height,Seconds Delta:\n";
 foreach ($slowBlocks as $height => $seconds) {
+	echo "$height,$seconds\n";
+}
+
+echo "\nNegative time delta blocks\n";
+echo "Block Height,Seconds Delta:\n";
+foreach ($negativeBlockHeights as $height => $seconds) {
 	echo "$height,$seconds\n";
 }
 
