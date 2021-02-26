@@ -6,7 +6,7 @@ use Denpa\Bitcoin\Client as BitcoinClient;
 
 $bitcoind = new BitcoinClient('http://username:password@localhost:8332/');
 $startHeight = $height = 100; // start height
-$maxBlockHeight = 670000;
+$maxBlockHeight = $block->get('getblockchaininfo')->get('blocks');
 $heightRange = $maxBlockHeight - $height;
 $slowBlocks = array();
 $secondsBetweenBlocks = array();
