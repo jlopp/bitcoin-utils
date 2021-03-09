@@ -22,7 +22,7 @@ function set_precision($value) {
 	return sprintf('%.8F',$value);
 }
 
-while ($block->has('nextblockhash')) {
+while ($height < $maxBlockHeight) {
 	$block = $bitcoind->getBlock($block->get('nextblockhash'), 2);
 
 	foreach ($block->get('tx') as $transaction) {
@@ -42,9 +42,16 @@ while ($block->has('nextblockhash')) {
 		}
 
 		// Search for outputs to a specific address
-		//if (isset($transaction['vout'][0]['scriptPubKey']['addresses']) && $transaction['vout'][0]['scriptPubKey']['addresses'][0] != "1Lets1xxxx1use1xxxxxxxxxxxy2EaMkJ") {
+		//if (isset($transaction['vout'][0]['scriptPubKey']['addresses']) && $transaction['vout'][0]['scriptPubKey']['addresses'][0] != "1Enjoy1C4bYBr3tN4sMKxvvJDqG8NkdR4Z") {
 		//	continue;
 		//}
+		// Search for inputs from a specific address
+		/*
+		if (isset($transaction['vin'][0]['scriptSig']['asm'])) {
+			if (explode(' ',$transaction['vin'][0]['scriptSig']['asm'])[1] != "045cce731a4d6308e5baf7d73ad2fcab298563bbc86404905d84e2b0ec314946a6d0e8076bd9db8e85ca0e7e5bd33f2adc629d48ac26f10e6ee459fc64efb5b8f5" && explode(' ',$transaction['vin'][0]['scriptSig']['asm'])[1] != "043e2baf0f082b5f7fa374051f09110bcf4d871e84c89904e30e85227d705952e9cafd536830a6126fa3a86af72ade7d1192e23a2aab3f64e67a6bd2046ca6f345") {
+			continue;
+			}
+		}*/
 
 		// If a ton of the outputs have the same value, it's probably dust limit spam
 		$values = array();
