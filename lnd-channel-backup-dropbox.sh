@@ -52,8 +52,8 @@ setup_files_and_folders () {
 
 	# Setup folders and filenames
 	DATADIR=/home/$ADMINUSER/.lnd
-	WORKINGDIR=/home/$ADMINUSER/lnd-data-backups
-	BACKUPFOLDER=.lndbackup-$DEVICE
+	WORKINGDIR=/home/$ADMINUSER/.lnd/channel-backups
+	BACKUPFOLDER=$DEVICE
 
 	# channel.backup file details
 	CHANFILEDIR=data/chain/bitcoin/mainnet
