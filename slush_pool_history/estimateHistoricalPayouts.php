@@ -33,8 +33,9 @@ if ($future) {
 
 $totalRevenue = 0;
 $earningsByDate = array();
+$hashrateByDate = array();
 
-echo "Block Height,Date,Expected Revenue\n";
+echo "Block Height,Date,Expected Revenue,Projected Hashrate\n";
 
 if (($handle = fopen("slushpoolHistory.csv", "r")) !== FALSE) {
 	// Throw away the first line (column headers)
@@ -70,15 +71,16 @@ if (($handle = fopen("slushpoolHistory.csv", "r")) !== FALSE) {
         } else {
         	$earningsByDate[$date] = $estimatedRevenueForBlock;        	
         }
-        echo "$height,$date,$estimatedRevenueForBlock\n";
+        $hashrateByDate[$date] = $minerHashrate;
+        echo "$height,$date,$estimatedRevenueForBlock,$minerHashrate\n";
     }
 } else {
 	echo "ERROR: Failed to open CSV file\n";
 }
 fclose($handle);
 
-echo "Date,Expected Revenue\n";
+echo "Date,Expected Revenue,Projected Hashrate\n";
 foreach ($earningsByDate as $date => $revenue) {
-	echo "$date,$revenue\n";
+	echo "$date,$revenue," . $hashrateByDate[$date] . "\n";
 }
 echo "Estimated total revenue for range is: $totalRevenue\n";
