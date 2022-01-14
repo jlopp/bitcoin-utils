@@ -16,9 +16,19 @@ curl_setopt($ch, CURLOPT_URL, $snapshotURL);
 $result = curl_exec($ch);
 $snapshotJson = json_decode($result);
 
-$reachableNodes = $unreachableNodes = 0;
+$totalNodes = $attemptedNodes = $reachableNodes = $unreachableNodes = 0;
 
 foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
+	$totalNodes++;
+}
+$percentOfNodes = floor($totalNodes / 100);
+
+foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
+	$attemptedNodes++;
+	if ($attemptedNodes % $percentOfNodes == 0) {
+		echo floor(($attemptedNodes / $totalNodes) * 100) . "% COMPLETE\n";
+	}
+
 	// 11 is ASN
 	if ($attributes[11] == 'TOR') {
 		continue;
@@ -29,11 +39,10 @@ foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
 		continue;
 	}
 
-	echo "$nodeIP\n";
+	echo "connecting to $nodeIP\n";
 
 	// this is an IPV4 peer; attempt to connect
-	$socket = socket_create(AF_INET, SOCK_STREAM, 6); // IPv4, TCP uses this type, TCP protocol
-	$success = socket_connect($socket, explode(":", $nodeIP)[0], explode(":", $nodeIP)[1]);
+	$success = connectPeer(explode(":", $nodeIP)[0], explode(":", $nodeIP)[1]);
 	if ($success) {
 		$reachableNodes++;
 	} else {
@@ -45,10 +54,9 @@ echo "Reachable nodes: $reachableNodes\n";
 echo "Unreachable nodes: $unreachableNodes\n";
 
 // ------------------
-// 1. VERSION MESSAGE
+// P2P Message functions
 // ------------------
 
-// General Functions
 function fieldsize($field, $bytes = 1) {
     $length = $bytes * 2;
     $result = str_pad($field, $length, '0', STR_PAD_LEFT);
@@ -60,11 +68,10 @@ function swapEndian($hex) {
 }
 
 function byteSpaces($bytes) { // add spaces between bytes
-    $bytes = implode(str_split(strtoupper($bytes), 2), ' ');
+    $bytes = implode(' ', str_split(strtoupper($bytes), 2));
     return $bytes;
 }
 
-// Version Message Functions 
 function timestamp($time) { // convert timestamp to network byte order
     $time = dechex($time);
     $time = fieldsize($time, 8);
@@ -81,9 +88,9 @@ function networkaddress($ip, $port = '8333') { // convert ip address to network 
     $ip = array_map("dechex", $ip);
     $ip = array_map("fieldsize", $ip);
     $ip = array_map("strtoupper", $ip);
-    $ip = implode($ip, ' ');
+    $ip = implode(' ', $ip);
 
-    $port = dechex($port); // for some fucking reason this is big-endian
+    $port = dechex($port); // for some reason this is big-endian
     $port = byteSpaces($port);
 
     return "$services $ipv6_prefix $ip $port";
@@ -96,26 +103,30 @@ function checksum($string) {
     return byteSpaces($checksum);
 }
 
-
-// MAKE MESSAGES
-
-function makeMessage($payload) {
+function makeMessage($command, $payload) {
 
     // Header
     $magicbytes = 'F9 BE B4 D9';
-    $command = '76 65 72 73 69 6F 6E 00 00 00 00 00';
+	$commandHex = "";
+	for ($i = 0; $i < 12; $i++) {
+		if (strlen($command) > $i) {
+			$commandHex .= bin2hex($command[$i]) . " ";
+		} else {
+			$commandHex .= "00 ";
+		}
+	}
     $payload_size = bytespaces(swapEndian(fieldsize(dechex(strlen($payload) / 2), 4)));
     $checksum = checksum($payload);
 
     $header_array = [
         'magicbytes'    => $magicbytes,
-        'command'       => $command,
+        'command'       => $commandHex,
         'payload_size'  => $payload_size,
         'checksum'      => $checksum,
     ];
 
     $header = str_replace(' ', '', implode($header_array));
-    echo 'Header: '; print_r($header_array);
+    //echo 'Header: '; print_r($header_array);
 
     return $header.$payload;
 
@@ -148,16 +159,23 @@ function makeVersionPayload($version, $node_ip, $node_port, $local_ip, $local_po
     ];
 
     $version_payload = str_replace(' ', '', implode($version_array));
-    echo 'Version Payload: '; print_r($version_array);
+    //echo 'Version Payload: '; print_r($version_array);
 
     return $version_payload;
-
 }
 
+function makeGetDataPayload($block_hash) {
 
-// -----------------
-// 2. SOCKET CONNECT
-// -----------------
+    $data_array = [ // hexadecimal, network byte order
+        'count'       => $version,        // 4 bytes (60002)
+        'inventory'  => $start_height    // 4 bytes
+    ];
+
+    $data_payload = str_replace(' ', '', implode($data_array));
+    //echo 'Version Payload: '; print_r($version_array);
+
+    return $data_payload;
+}
 
 // Print socket error function
 function error() {
@@ -165,28 +183,31 @@ function error() {
     return $error.PHP_EOL;
 }
 
-function connectPeer() {
+function connectPeer($peer_ip, $peer_port) {
 	$version    = 60002;
-	$node       = array('85.119.83.25', 8333); // node you want to connect to
-	$local      = array('127.0.0.1', 8333); // our ip and port
+	$local_ip = '127.0.0.1';
+	$local_port = 8333;
 
-	list($node_ip, $node_port) = $node;
-	list($local_ip, $local_port) = $local;
-
-	echo "\nNode\n----\n";
-	echo 'version: '.$version.PHP_EOL;
-	echo 'node:    '.implode($node, ':').PHP_EOL;
-	echo 'local:   '.implode($local, ':').PHP_EOL.PHP_EOL;
-
-	// i. Create Version Message (needs to be sent to node you want to connect to)
-	echo "Connect\n-------\n";
-	$payload = makeVersionPayload($version, $node_ip, $node_port, $local_ip, $local_port);
-	$message = makeMessage($payload);
+	// create Version Message (needs to be sent to node you want to connect to)
+	$payload = makeVersionPayload($version, $peer_ip, $peer_port, $local_ip, $local_port);
+	$message = makeMessage("version", $payload);
 	$message_size = strlen($message) / 2; // the size of the message (in bytes) being sent
 
-
-	// ii. Connect to socket and send version message
+	// connect to socket and send version message
 	$socket = socket_create(AF_INET, SOCK_STREAM, 6); // IPv4, TCP uses this type, TCP protocol
-	socket_connect($socket, $node_ip, $node_port);
+	$success = socket_connect($socket, $peer_ip, $peer_port);
+	if (!$success) {
+		return false;
+	}
+	echo "sending data\n";
 	socket_send($socket, hex2bin($message), $message_size, 0); // don't forget to send message in binary
+	echo "reading data\n";
+	$data = socket_read($socket, 1024);
+	print_r(bin2hex($data)); echo "\n";
+	if ($data === false || empty($data)) {
+		return false;
+	}
+
+	// request 10 full blocks and time how long it takes to receive them
+	return true;
 }
