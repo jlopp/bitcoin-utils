@@ -3,6 +3,8 @@
 // This script takes the most recent reachable Bitcoin node list from bitnodes
 // and then iterates through each IPV4 node and attempts to connect to it
 
+global $socket;
+
 $ch = curl_init();
 curl_setopt($ch, CURLOPT_URL, "https://bitnodes.io/api/v1/snapshots/");
 curl_setopt($ch, CURLOPT_HEADER, 0);
@@ -16,7 +18,7 @@ curl_setopt($ch, CURLOPT_URL, $snapshotURL);
 $result = curl_exec($ch);
 $snapshotJson = json_decode($result);
 
-$totalNodes = $attemptedNodes = $reachableNodes = $unreachableNodes = 0;
+$totalNodes = $attemptedNodes = $reachableNodes = $unreachableNodes = $prunedNodes = 0;
 
 foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
 	$totalNodes++;
@@ -48,10 +50,21 @@ foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
 	} else {
 		$unreachableNodes++;
 	}
+
+	// is this a pruned node? if not, attempt to get some older blocks from it
+	// look for service bits that don't include the NODE_NETWORK service flag
+	if ($attributes[3] == 1032) {
+		$prunedNodes++;
+		continue;
+	}
+
+	requestBlocks();
+	exit;
 }
 
 echo "Reachable nodes: $reachableNodes\n";
 echo "Unreachable nodes: $unreachableNodes\n";
+echo "Pruned nodes: $prunedNodes\n";
 
 // ------------------
 // P2P Message functions
@@ -164,15 +177,39 @@ function makeVersionPayload($version, $node_ip, $node_port, $local_ip, $local_po
     return $version_payload;
 }
 
-function makeGetDataPayload($block_hash) {
+
+function makeGetDataPayload() {
+
+	$block_hashes = [
+		bytespaces(swapEndian(fieldsize(dechex(2), 4))), // MSG_BLOCK inventory type
+		swapEndian(strtoupper("00000000000000000024fb37364cbf81fd49cc2d51c09c75c35433c3a1945d04")),
+		bytespaces(swapEndian(fieldsize(dechex(2), 4))),
+		swapEndian(strtoupper("0000000000000000005c9959b3216f8640f94ec96edea69fe12ad7dee8b74e92")),
+		bytespaces(swapEndian(fieldsize(dechex(2), 4))),
+		swapEndian(strtoupper("000000000000000000877d93d1412ca671750152ba0862db95f073b82c04b191")),
+		bytespaces(swapEndian(fieldsize(dechex(2), 4))),
+		swapEndian(strtoupper("0000000000000000005467c7a728a3dcb17080d5fdca330043d51e298374f30e")),
+		bytespaces(swapEndian(fieldsize(dechex(2), 4))),
+		swapEndian(strtoupper("0000000000000000005d4da5924742e6d6372745f15c39feb05cf9b2e49e646d")),
+		bytespaces(swapEndian(fieldsize(dechex(2), 4))),
+		swapEndian(strtoupper("0000000000000000007150115460d0e92093aa937a913072d768f8136e289c2d")),
+		bytespaces(swapEndian(fieldsize(dechex(2), 4))),
+		swapEndian(strtoupper("000000000000000000063a1cc4280179e0f95d05c5d6edabcfe35ecbe29ab525")),
+		bytespaces(swapEndian(fieldsize(dechex(2), 4))),
+		swapEndian(strtoupper("0000000000000000002f6f0603757e974df0eb92db8e780d515b85d7de89bd98")),
+		bytespaces(swapEndian(fieldsize(dechex(2), 4))),
+		swapEndian(strtoupper("0000000000000000005f3b9fdd039ce2d228258cc822c04f1916b3162eded824")),
+		bytespaces(swapEndian(fieldsize(dechex(2), 4))),
+		swapEndian(strtoupper("0000000000000000006bcf0cd88715eeb3b399644cb50c087781c8236fa08929"))
+	];
 
     $data_array = [ // hexadecimal, network byte order
-        'count'       => $version,        // 4 bytes (60002)
-        'inventory'  => $start_height    // 4 bytes
+        'count'      => bytespaces(swapEndian(fieldsize(dechex(10), 1))),
+        'inventory'  => implode($block_hashes)
     ];
 
     $data_payload = str_replace(' ', '', implode($data_array));
-    //echo 'Version Payload: '; print_r($version_array);
+    //echo 'GetData Payload: '; print_r($version_array);
 
     return $data_payload;
 }
@@ -184,6 +221,7 @@ function error() {
 }
 
 function connectPeer($peer_ip, $peer_port) {
+	global $socket;
 	$version    = 60002;
 	$local_ip = '127.0.0.1';
 	$local_port = 8333;
@@ -194,20 +232,66 @@ function connectPeer($peer_ip, $peer_port) {
 	$message_size = strlen($message) / 2; // the size of the message (in bytes) being sent
 
 	// connect to socket and send version message
-	$socket = socket_create(AF_INET, SOCK_STREAM, 6); // IPv4, TCP uses this type, TCP protocol
+	$socket = socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
 	$success = socket_connect($socket, $peer_ip, $peer_port);
 	if (!$success) {
 		return false;
 	}
-	echo "sending data\n";
+
 	socket_send($socket, hex2bin($message), $message_size, 0); // don't forget to send message in binary
-	echo "reading data\n";
+
 	$data = socket_read($socket, 1024);
-	print_r(bin2hex($data)); echo "\n";
+
 	if ($data === false || empty($data)) {
 		return false;
 	}
 
-	// request 10 full blocks and time how long it takes to receive them
+	echo "Received version response: "; print_r(bin2hex($data)); echo "\n";
+
+	// send verack response with empty payload so that we can send other messages next
+	$message = makeMessage("verack", "");
+	$message_size = strlen($message) / 2; // the size of the message (in bytes) being sent
+	socket_send($socket, hex2bin($message), $message_size, 0);
+
+	// listen for "ping" message
+	$data = socket_read($socket, 10);
+
+	if ($data === false || empty($data)) {
+		return false;
+	}
+
+	echo "Ping data: " . bin2hex($data) . "\n";
+
+	// send "pong" reply with nonce we received
+	//$message = makeMessage("pong", bin2hex($data));
+	//$message_size = strlen($message) / 2;
+	//socket_send($socket, hex2bin($message), $message_size, 0);
+
+	// listen for "getheaders" message
+	$data = socket_read($socket, 2048);
+
+	if ($data === false || empty($data)) {
+		return false;
+	}
+
+	// send empty "headers" reply
+	$message = makeMessage("headers", "");
+	$message_size = strlen($message) / 2;
+	socket_send($socket, hex2bin($message), $message_size, 0);
+
 	return true;
+}
+
+// request 10 full blocks from currently connected peer
+function requestBlocks() {
+	global $socket;
+	$payload = makeGetDataPayload();
+	$message = makeMessage("getdata", $payload);
+	$message_size = strlen($message) / 2;
+	echo "GetData message: $message\n\n";
+	socket_send($socket, hex2bin($message), $message_size, 0);
+
+	$data = socket_read($socket, 20000000);
+	echo "Received getdata response: "; print_r(bin2hex($data)); echo "\n";
+	echo "Last socket error: " . error();
 }
