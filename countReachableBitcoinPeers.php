@@ -19,6 +19,8 @@ $result = curl_exec($ch);
 $snapshotJson = json_decode($result);
 
 $totalNodes = $attemptedNodes = $reachableNodes = $unreachableNodes = $prunedNodes = 0;
+$blockDownloadFailed = $blockDownloadSucceeded = 0;
+$blockDownloadTimes = array();
 
 foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
 	$totalNodes++;
@@ -41,7 +43,7 @@ foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
 		continue;
 	}
 
-	echo "connecting to $nodeIP\n";
+	//echo "connecting to $nodeIP\n";
 
 	// this is an IPV4 peer; attempt to connect
 	$success = connectPeer(explode(":", $nodeIP)[0], explode(":", $nodeIP)[1]);
@@ -58,13 +60,22 @@ foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
 		continue;
 	}
 
-	requestBlocks();
-	exit;
+	$time = requestBlocks();
+	if ($time === false) {
+		$blockDownloadFailed++;
+	} else {
+		$blockDownloadSucceeded++;
+		$blockDownloadTimes[] = $time;
+	}
 }
 
+echo "\n\n";
 echo "Reachable nodes: $reachableNodes\n";
 echo "Unreachable nodes: $unreachableNodes\n";
 echo "Pruned nodes: $prunedNodes\n";
+echo "Block Download Failed: $blockDownloadFailed\n";
+echo "Block Download Succeeded: $blockDownloadSucceeded\n";
+echo "Block Download Times: " . implode(",", $blockDownloadTimes) . "\n";
 
 // ------------------
 // P2P Message functions
@@ -214,15 +225,9 @@ function makeGetDataPayload() {
     return $data_payload;
 }
 
-// Print socket error function
-function error() {
-    $error = socket_strerror(socket_last_error());
-    return $error.PHP_EOL;
-}
-
 function connectPeer($peer_ip, $peer_port) {
 	global $socket;
-	$version    = 60002;
+	$version    = 70016;
 	$local_ip = '127.0.0.1';
 	$local_port = 8333;
 
@@ -238,29 +243,37 @@ function connectPeer($peer_ip, $peer_port) {
 		return false;
 	}
 
-	socket_send($socket, hex2bin($message), $message_size, 0); // don't forget to send message in binary
+	$success = socket_send($socket, hex2bin($message), $message_size, 0);
+	if (!$success) {
+		return false;
+	}
 
-	$data = socket_read($socket, 1024);
+	sleep(1);
+	$data = readSocketData();
 
 	if ($data === false || empty($data)) {
 		return false;
 	}
 
-	echo "Received version response: "; print_r(bin2hex($data)); echo "\n";
+	//echo "\nReceived version response: "; print_r(bin2hex($data)); echo "\n";
 
 	// send verack response with empty payload so that we can send other messages next
 	$message = makeMessage("verack", "");
-	$message_size = strlen($message) / 2; // the size of the message (in bytes) being sent
-	socket_send($socket, hex2bin($message), $message_size, 0);
+	$message_size = strlen($message) / 2;
+	$success = socket_send($socket, hex2bin($message), $message_size, 0);
 
-	// listen for "ping" message
-	$data = socket_read($socket, 10);
+	if (!$success) {
+		return false;
+	}
+
+	// listen for "ping" message (starts with 70 69 6e 67)
+	$data = readSocketData();
 
 	if ($data === false || empty($data)) {
 		return false;
 	}
 
-	echo "Ping data: " . bin2hex($data) . "\n";
+	//echo "\nPing data: " . bin2hex($data) . "\n";
 
 	// send "pong" reply with nonce we received
 	//$message = makeMessage("pong", bin2hex($data));
@@ -268,30 +281,89 @@ function connectPeer($peer_ip, $peer_port) {
 	//socket_send($socket, hex2bin($message), $message_size, 0);
 
 	// listen for "getheaders" message
-	$data = socket_read($socket, 2048);
+	$data = readSocketData();
 
-	if ($data === false || empty($data)) {
-		return false;
-	}
+	//if ($data === false || empty($data)) {
+	//	return false;
+	//}
 
 	// send empty "headers" reply
 	$message = makeMessage("headers", "");
 	$message_size = strlen($message) / 2;
-	socket_send($socket, hex2bin($message), $message_size, 0);
+	$success = socket_send($socket, hex2bin($message), $message_size, 0);
+
+	if (!$success) {
+		return false;
+	}
 
 	return true;
 }
 
 // request 10 full blocks from currently connected peer
+// return time in ms if we got all the expected data
+// return false if we failed to get all the data
 function requestBlocks() {
 	global $socket;
 	$payload = makeGetDataPayload();
 	$message = makeMessage("getdata", $payload);
 	$message_size = strlen($message) / 2;
-	echo "GetData message: $message\n\n";
-	socket_send($socket, hex2bin($message), $message_size, 0);
+	//echo "Sent GetData message: $message\n\n";
+	$success = socket_send($socket, hex2bin($message), $message_size, 0);
+	if (!$success) {
+		return false;
+	}
 
-	$data = socket_read($socket, 20000000);
-	echo "Received getdata response: "; print_r(bin2hex($data)); echo "\n";
-	echo "Last socket error: " . error();
+	$data = "";
+	// time how long it takes to receive blocks
+	$start_time = round(microtime(true) * 1000);
+
+	// give peer 2 min to respond
+	for ($i = 0; $i < 120; $i++) {
+		$data .= readSocketData();
+		if (strlen($data) < 9770000) {
+			sleep(1);
+		} else {
+			break;
+		}
+	}
+	$end_time = round(microtime(true) * 1000);
+	$total_time = $end_time - $start_time;
+	//echo "Received getdata response: "; print_r(bin2hex($data)); echo "\n";
+	// data received should be > 9772653 bytes
+	//echo "Received getdata response of length: " . strlen($data) . " in " . $total_time . "ms\n";
+
+	if (strlen($data) >= 9770000) {
+		return $total_time;
+	} else {
+		return false;
+	}
+}
+
+// keep reading data from socket until exhausted
+function readSocketData() {
+	global $socket;
+	$allData = $newData = "";
+
+	while (true) {
+		// try 10 times over period of 0.1 second to read data
+		for ($i = 0; $i < 10; $i++) {
+			$success = socket_recv($socket, $newData, 1024, MSG_DONTWAIT);
+			//$newData = socket_read($socket, 1);
+			if (!empty($newData)) {
+				$allData .= $newData;
+				//echo bin2hex($newData);
+			} else { // sleep for 1ms if we didn't read any data
+				//echo " sleeping to read more data\n";
+				usleep(10000);
+			}
+		}
+
+		// no more data available to read
+		if (empty($newData)) {
+			break;
+		}
+		//echo "Waiting to read more data...\n";
+	}
+
+	return $allData;
 }
