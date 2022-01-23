@@ -17,6 +17,7 @@ $result = curl_exec($ch);
 $snapshotJson = json_decode($result);
 
 $totalNodes = $attemptedNodes = 0;
+$networkBandwidth = array();
 
 foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
 	$totalNodes++;
@@ -40,13 +41,29 @@ foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
 	}
 
 	// this is an IPV4 peer; scrape its individual stats page
-	curl_setopt($ch, CURLOPT_URL, "https://bitnodes.io/nodes/" . explode(":", $nodeIP)[0] . "-" . explode(":", $nodeIP)[1] . "/");
+	curl_setopt($ch, CURLOPT_URL, "https://bitnodes.io/api/v1/nodes/" . explode(":", $nodeIP)[0] . "-" . explode(":", $nodeIP)[1] . "/");
 
 	$result = curl_exec($ch);
-	// find <h4>0.0889 Mbps</h4>
-	$matches = array();
-	preg_match('/<h4>[0-9.-]{1,8} Mbps<\/h4>/', $result, $matches);
-	echo $matches[0] . "\n";
+	$nodeJson = json_decode($result);
+	//echo $nodeJson->mbps . "\n";
+
+	// throw away invalid values
+	if (empty($nodeJson->mbps) || !isset($nodeJson->mbps) || !is_numeric($nodeJson->mbps)) {
+		continue;
+	}
+
+	// bucket by network
+	if (array_key_exists($nodeJson->data[12], $networkBandwidth)) {
+		$networkBandwidth[$nodeJson->data[12]][] = $nodeJson->mbps;
+	} else {
+		$networkBandwidth[$nodeJson->data[12]] = array($nodeJson->mbps);
+	}
 }
 
 echo "\n\n";
+
+// Print average bandwidth by network
+foreach ($networkBandwidth as $network => $speeds) {
+	$averageSpeed = array_sum($speeds)/count($speeds);
+	echo $network . "," . $averageSpeed . "\n";
+}
