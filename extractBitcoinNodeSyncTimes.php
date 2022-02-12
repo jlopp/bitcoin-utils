@@ -24,7 +24,8 @@ if (($handle = fopen($argv[1], "r")) !== FALSE) {
     }
 
     while (($data = fgetcsv($handle, 1000, " ")) !== FALSE) {
-        if ($data[1] !== "UpdateTip:") {
+        // older versions of core start log line with "SetBestChain:" while newer ones use "UpdateTip:"
+        if ($data[1] !== "UpdateTip:" && $data[1] !== "SetBestChain:") {
             continue;
         }
         $height = explode("=", $data[4])[1];
