@@ -9,12 +9,26 @@ if (count($argv) < 2 || !$argv[1]) {
 }
 
 $startTime;
+$version;
 
 // output CSV file format: Minutes,Block Height
 echo "Minutes Syncing,Block Height\n";
 
 
 if (($handle = fopen($argv[1], "r")) !== FALSE) {
+    // first we must determine which Bitcoin Core version created this log file
+    // because the log formats changed a bit over the years
+    while (($data = fgetcsv($handle, 1000, " ")) !== FALSE) {
+        if (in_array("version", $data)) {
+            $position = array_keys($data, "version")[0];
+            // strip non-numeric chars to get the actual number
+            $version = preg_replace("/[^0-9\.]/", "", $data[$position + 1]);
+        }
+    }
+
+    // Bitcoin Core versions prior to X printed timestamp in YYY-MM-DD HH:MM:SS format
+    // while later versions used YYYY-MM-DDTHH:MM:SSZ format
+
     // we must find the first timestamp to determine the start time
     while (($data = fgetcsv($handle, 1000, " ")) !== FALSE) {
         if (isset($data[0]) && strtotime($data[0])) {
@@ -24,7 +38,8 @@ if (($handle = fopen($argv[1], "r")) !== FALSE) {
     }
 
     while (($data = fgetcsv($handle, 1000, " ")) !== FALSE) {
-        // older versions of core start log line with "SetBestChain:" while newer ones use "UpdateTip:"
+        // Bitcoin Core versions prior to v0.9.0 printed block processed lines with "SetBestChain:"
+        // while later versions use "UpdateTip:"
         if ($data[1] !== "UpdateTip:" && $data[1] !== "SetBestChain:") {
             continue;
         }
