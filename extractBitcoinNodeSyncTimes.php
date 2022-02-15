@@ -8,50 +8,85 @@ if (count($argv) < 2 || !$argv[1]) {
     exit;
 }
 
+if (count($argv) < 3 || !is_numeric($argv[2]) || $argv[2] < 0) {
+    echo "ERROR: second argument must be a positive integer (max block height)\n";
+    exit;
+}
+
 $startTime;
 $version;
+$maxHeight = $argv[2];
 
 // output CSV file format: Minutes,Block Height
 echo "Minutes Syncing,Block Height\n";
-
 
 if (($handle = fopen($argv[1], "r")) !== FALSE) {
     // first we must determine which Bitcoin Core version created this log file
     // because the log formats changed a bit over the years
     while (($data = fgetcsv($handle, 1000, " ")) !== FALSE) {
-        if (in_array("version", $data)) {
+        if (in_array("version", $data) && in_array("Bitcoin", $data)) {
             $position = array_keys($data, "version")[0];
+
             // strip non-numeric chars to get the actual number
             $version = preg_replace("/[^0-9\.]/", "", $data[$position + 1]);
+
+            // if there is more than one decimal, truncate decimals so that we have a real number
+            preg_match_all('/\./', $version, $matches, PREG_OFFSET_CAPTURE);
+            if (array_key_exists(0, $matches) && array_key_exists(1, $matches[0]) && array_key_exists(1, $matches[0][1])) {
+                $version = substr($version, $matches[0][0][1] + 1, $matches[0][1][1] - $matches[0][0][1] - 1);
+            }
+            break;
         }
     }
 
-    // Bitcoin Core versions prior to X printed timestamp in YYY-MM-DD HH:MM:SS format
+    // Bitcoin Core versions prior to ??? printed timestamp in YYY-MM-DD HH:MM:SS format
     // while later versions used YYYY-MM-DDTHH:MM:SSZ format
+    // This also shifts which CSV field various values end up in
+    $heightField = $version < 12 ? 6 : 4;
 
     // we must find the first timestamp to determine the start time
     while (($data = fgetcsv($handle, 1000, " ")) !== FALSE) {
-        if (isset($data[0]) && strtotime($data[0])) {
+        if ($version < 12) {
+            if (isset($data[0]) && strtotime($data[0] . " " . $data[1])) {
+                $startTime = strtotime($data[0] . " " . $data[1]);
+                break;
+            }
+        } else if (isset($data[0]) && strtotime($data[0])) {
             $startTime = strtotime($data[0]);
             break;
         }
     }
 
+    // Find the actual block processed timestamps and calculate time elapsed
     while (($data = fgetcsv($handle, 1000, " ")) !== FALSE) {
         // Bitcoin Core versions prior to v0.9.0 printed block processed lines with "SetBestChain:"
         // while later versions use "UpdateTip:"
-        if ($data[1] !== "UpdateTip:" && $data[1] !== "SetBestChain:") {
+        if ($version < 9 && $data[2] !== "SetBestChain:") {
+            continue;
+        } else if ($version >= 9 && $version < 12 && $data[2] !== "UpdateTip:") {
+            continue;
+        } else if ($version >= 12 && $data[1] !== "UpdateTip:") {
             continue;
         }
-        $height = explode("=", $data[4])[1];
+
+        $height = explode("=", $data[$heightField])[1];
         if ($height % 1000 != 0) {
         	continue;
         }
 
-        $syncTime = floor((strtotime($data[0]) - $startTime) / 60);
+        if ($height > $maxHeight) {
+            break;
+        }
+
+        if ($version < 12) {
+            $syncTime = floor((strtotime($data[0] . " " . $data[1]) - $startTime) / 60);
+        } else {
+            $syncTime = floor((strtotime($data[0]) - $startTime) / 60);
+        }
+
         echo "$syncTime,$height\n";
     }
     fclose($handle);
 } else {
-	echo "ERROR: Failed to open debug.log file\n";
+	echo "ERROR: Failed to open log file\n";
 }
