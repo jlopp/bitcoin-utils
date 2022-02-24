@@ -39,14 +39,14 @@ if (($handle = fopen($argv[1], "r")) !== FALSE) {
         }
     }
 
-    // Bitcoin Core versions prior to ??? printed timestamp in YYY-MM-DD HH:MM:SS format
+    // Bitcoin Core versions prior to v0.18 printed timestamp in YYY-MM-DD HH:MM:SS format
     // while later versions used YYYY-MM-DDTHH:MM:SSZ format
     // This also shifts which CSV field various values end up in
-    $heightField = $version < 12 ? 6 : 4;
+    $heightField = $version < 18 ? 6 : 4;
 
     // we must find the first timestamp to determine the start time
     while (($data = fgetcsv($handle, 1000, " ")) !== FALSE) {
-        if ($version < 12) {
+        if ($version < 18) {
             if (isset($data[0]) && strtotime($data[0] . " " . $data[1])) {
                 $startTime = strtotime($data[0] . " " . $data[1]);
                 break;
