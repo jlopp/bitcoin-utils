@@ -82,6 +82,11 @@ if (($handle = fopen($argv[1], "r")) !== FALSE) {
             }
         }
 
+	if (strstr($data[$heightField],"=") == FALSE) {
+		// block height is missing; ignore this line
+		continue;
+	}
+
         $height = explode("=", $data[$heightField])[1];
         if ($height % 1000 != 0) {
         	continue;
