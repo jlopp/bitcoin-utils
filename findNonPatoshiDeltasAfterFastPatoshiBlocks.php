@@ -1,10 +1,11 @@
 <?php
 
-// This script finds the timestamp deltas between each block mined by Patoshi
-// By default it does NOT calculate the deltas between non-Patoshi and Patoshi blocks
-// if you pass in an argument of "all" then it will calculate the delta between the 
-// previous block regardless of if it was a Patoshi block
-
+/* This script looks for blocks in the first 50,000 that meet the following criteria:
+ * 1. A sequence of a Patoshi block -> Patoshi block -> non-Patoshi block
+ * 2. The second Patoshi block must be mined less than 10 minutes after the first
+ *
+ * We then output the timestamp delta between the non-Patoshi block and the 2nd Patoshi block
+*/
 require 'vendor/autoload.php';
 
 use Denpa\Bitcoin\Client as BitcoinClient;
@@ -13,32 +14,34 @@ $patoshiBlocks = array(3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,2
 
 $bitcoind = new BitcoinClient('http://user:password@localhost:8332/');
 
-if ($argv[1] == "all") {
-    echo "Calculating block time deltas for all blocks\n";
-	foreach ($patoshiBlocks as $blockHeight) {
-		$prevBlockHash = $bitcoind->getBlockHash($blockHeight - 1);
-		$prevBlock = $bitcoind->getBlock("$prevBlockHash");
-		$prevBlockTime = $prevBlock->get('time');
+$currentStreakBlocks = array();
+foreach ($patoshiBlocks as $blockHeight) {
+	if (count($currentStreakBlocks) == 0 || $blockHeight == $currentStreakBlocks[array_key_last($currentStreakBlocks)] + 1) {
+		array_push($currentStreakBlocks, $blockHeight);
+	} else { // we have broken the latest "streak"
+		if (count($currentStreakBlocks) > 2) { // there were at least 2 back-to-back Patoshi blocks
+			// Determine if the final Patoshi block in the streak was < 10 minutes after the parent Patoshi block
+			$patoshiBlock1Hash = $bitcoind->getBlockHash($currentStreakBlocks[array_key_last($currentStreakBlocks)] - 1);
+			$patoshiBlock1 = $bitcoind->getBlock("$patoshiBlock1Hash");
+			$patoshiBlock1Time = $patoshiBlock1->get('time');
 
-		$blockHash = $bitcoind->getBlockHash($blockHeight);
-		$block = $bitcoind->getBlock("$blockHash");
-		$blockTime = $block->get('time');
+			$patoshiBlock2Hash = $bitcoind->getBlockHash($currentStreakBlocks[array_key_last($currentStreakBlocks)]);
+			$patoshiBlock2 = $bitcoind->getBlock("$patoshiBlock2Hash");
+			$patoshiBlock2Time = $patoshiBlock1->get('time');
 
-		$delta = $blockTime - $prevBlockTime;
+			if ($patoshiBlock2Time < $patoshiBlock1Time + 600) {
+				$nonPatoshiBlockHeight = $currentStreakBlocks[array_key_last($currentStreakBlocks)] + 1;
+				$nonpatoshiBlockHash = $bitcoind->getBlockHash($nonPatoshiBlockHeight);
+				$nonpatoshiBlock = $bitcoind->getBlock("$nonpatoshiBlockHash");
+				$nonpatoshiBlockTime = $nonpatoshiBlock->get('time');
 
-		echo "$blockHeight,$delta\n";
-	}
-} else {
-	$prevBlockTime = 1231469744; // block height 2
-	echo "Calculating block time deltas between Patoshi blocks only\n";
-	foreach ($patoshiBlocks as $blockHeight) {
-		$blockHash = $bitcoind->getBlockHash($blockHeight);
-		$block = $bitcoind->getBlock("$blockHash");
-		$time = $block->get('time');
-		$delta = $time - $prevBlockTime;
+				$delta = $nonpatoshiBlockTime - $patoshiBlock2Time;
 
-		echo "$blockHeight,$delta\n";
+				echo "$nonPatoshiBlockHeight,$delta\n";
+			}
+		}
 
-		$prevBlockTime = $time;
+		// reset the streak tracker
+		$currentStreakBlocks = array();		
 	}
 }
