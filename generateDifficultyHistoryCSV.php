@@ -1,7 +1,7 @@
 <?php
 
-// This script usees the blockstream explorer API
-// It iterates through ever block that was minted after a difficulty retarget height
+// This script uses the blockstream explorer API
+// It iterates through every block that was minted after a difficulty retarget height
 // and if the difficulty changed compared to the previous epoch, will print it in CSV format
 
 $ch = curl_init();
