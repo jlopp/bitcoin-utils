@@ -47,6 +47,7 @@ while True:
     gauges = {
         "system.memory.used":               memory.used,
         "system.memory.free":               memory.free,
+        "system.memory.percent":            memory.percent,
         "system.memory.available":          memory.available,
         "system.memory.active":             memory.active,
         "system.memory.inactive":           memory.inactive,
