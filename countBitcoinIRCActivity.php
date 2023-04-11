@@ -3,8 +3,8 @@
 // This script scrapes the #bitcoin-core-dev IRC log archive hosted by chaincode and
 // counts how many messages were posted each day / month
 
-$begin = new DateTime('2019-01-01');
-$end = new DateTime('2022-01-01');
+$begin = new DateTime('2022-01-01');
+$end = new DateTime('2023-01-01');
 
 $interval = DateInterval::createFromDateString('1 day');
 $period = new DatePeriod($begin, $interval, $end);
