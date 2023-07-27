@@ -4,30 +4,57 @@
 // and then iterates through each IPV4 node and attempts to connect to it
 
 global $socket;
+$chunkJson = array();
 
-$ch = curl_init();
-curl_setopt($ch, CURLOPT_URL, "https://bitnodes.io/api/v1/snapshots/");
-curl_setopt($ch, CURLOPT_HEADER, 0);
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+// check to see if we have a list of IP addreses
+if (isset($argv[1]) && is_numeric($argv[1])) {
+	if (!file_exists("nodes.json")) {
+		echo "ERROR: nodes.json does not exist!\n";
+	}
+	// load the snapshot json and prune it down to chunk N based on the argument
+	$snapshotJson = json_decode(file_get_contents("nodes.json"));
+	$count = 0;
+	foreach ($snapshotJson->nodes as $node) {
+		$count++;
+	}
+	$chunkSize = floor($count / 100);
+	$rangeStart = $chunkSize * $argv[1];
+	$rangeEnd = $chunkSize * $argv[1] + $chunkSize;
 
-$result = curl_exec($ch);
-$snapshotListJson = json_decode($result);
-$snapshotURL = $snapshotListJson->results[0]->url;
-curl_setopt($ch, CURLOPT_URL, $snapshotURL);
+	$count = 0;
+	foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
+		if ($count >= $rangeStart && $count < $rangeEnd) {
+			$chunkJson[$nodeIP] = $attributes;
+		}
+		$count++;
+	}
+} else {
+	$ch = curl_init();
+	curl_setopt($ch, CURLOPT_URL, "https://bitnodes.io/api/v1/snapshots/");
+	curl_setopt($ch, CURLOPT_HEADER, 0);
+	curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
 
-$result = curl_exec($ch);
-$snapshotJson = json_decode($result);
+	$result = curl_exec($ch);
+	$snapshotListJson = json_decode($result);
+	$snapshotURL = $snapshotListJson->results[0]->url;
+	curl_setopt($ch, CURLOPT_URL, $snapshotURL);
+
+	$result = curl_exec($ch);
+	file_put_contents("nodes.json", $result);
+	echo "Wrote nodes snapshot json file to disk\n";
+	exit;
+}
 
 $totalNodes = $attemptedNodes = $reachableNodes = $unreachableNodes = $prunedNodes = 0;
 $blockDownloadFailed = $blockDownloadSucceeded = 0;
 $blockDownloadTimes = array();
 
-foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
+foreach ($chunkJson as $nodeIP => $attributes) {
 	$totalNodes++;
 }
 $percentOfNodes = floor($totalNodes / 100);
 
-foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
+foreach ($chunkJson as $nodeIP => $attributes) {
 	$attemptedNodes++;
 	if ($attemptedNodes % $percentOfNodes == 0) {
 		echo floor(($attemptedNodes / $totalNodes) * 100) . "% COMPLETE\n";
@@ -69,13 +96,14 @@ foreach ($snapshotJson->nodes as $nodeIP => $attributes) {
 	}
 }
 
-echo "\n\n";
-echo "Reachable nodes: $reachableNodes\n";
-echo "Unreachable nodes: $unreachableNodes\n";
-echo "Pruned nodes: $prunedNodes\n";
-echo "Block Download Failed: $blockDownloadFailed\n";
-echo "Block Download Succeeded: $blockDownloadSucceeded\n";
-echo "Block Download Times: " . implode(",", $blockDownloadTimes) . "\n";
+$output =
+"Reachable nodes:$reachableNodes
+Unreachable nodes:$unreachableNodes
+Pruned nodes:$prunedNodes
+Block Download Failed:$blockDownloadFailed
+Block Download Succeeded:$blockDownloadSucceeded
+Block Download Times:" . implode(",", $blockDownloadTimes) . "\n";
+file_put_contents("node_bandwidth_stats_" . $argv[1] . ".csv", $output);
 
 // ------------------
 // P2P Message functions
@@ -317,9 +345,15 @@ function requestBlocks() {
 	// time how long it takes to receive blocks
 	$start_time = round(microtime(true) * 1000);
 
-	// give peer 2 min to respond
+	// 2 minute timeout if data stops flowing
 	for ($i = 0; $i < 120; $i++) {
-		$data .= readSocketData();
+		$newData = readSocketData();
+		if (!empty($newData)) {
+			$i = 0;
+			$data .= $newData;
+		}
+
+		// we haven't received all the data yet, keep looping
 		if (strlen($data) < 9770000) {
 			sleep(1);
 		} else {
