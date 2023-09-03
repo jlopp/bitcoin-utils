@@ -17,7 +17,7 @@ if (($handle = fopen($argv[1], "r")) === FALSE) {
     exit;
 }
 
-$bitcoind = new BitcoinClient('http://qwerty:qwerty@localhost:8332/');
+$bitcoind = new BitcoinClient('http://user:pass@localhost:8332/');
 $startHeight = $height = 713762; // start height of realtime data
 $maxBlockHeight = $bitcoind->getBlockchaininfo()->get('blocks');
 $currentBlockHash = $bitcoind->getBlockhash($height)->get();
@@ -84,8 +84,6 @@ foreach ($poolHashByBlockHeight as $blockHeight => $pools) {
 		}
 	}
 }
-
-print_r($poolHashByBlockHeight);
 
 // output CSV file format
 echo "Block Height,Aggregate Realtime Hashrate\n";
