@@ -77,65 +77,74 @@ while (($data = fgetcsv($handle, 1000, ",")) !== FALSE) {
 }
 fclose($handle);
 
-// calculate blended hashrate estimate
-foreach ($realHashrates as $blockHeight => $hashrate) {
-	// only start 100 blocks into our data since we use a window of past 100 blocks of estimates
-	if ($blockHeight < $startHeight + 100) {
-		continue;
-	}
-	$shortEstimate = $shortEstimates[$blockHeight];
-	$longEstimate = $longEstimates[$blockHeight];
+echo "Trailing Blocks,Higher Short Weight,Lower Short Rate,Average Error Rate,Standard Deviation\n";
 
-	// if current short hashrate estimate is less than 1 std deviation from long estimate, ignore it
-	if (abs($longEstimate - $shortEstimate) / $longEstimate < 0.06) {
-		$blendedEstimate = $longEstimate;
-	} else {
-		$shortWeight = 0;
+$trailingBlocks = 10; // test from 10 to 100 trailing blocks
+$higherShortWeight = $trailingBlocks; // test from $trailingBlocks to 1000
+$lowerShortWeight = $trailingBlocks; // test from $trailingBlocks to 1000
+for ($trailingBlocks = 10; $trailingBlocks <= 200; $trailingBlocks++) {
+	for ($higherShortWeight = $trailingBlocks; $higherShortWeight <= 1000; $higherShortWeight++) {
+		for ($lowerShortWeight = $trailingBlocks; $lowerShortWeight <= 1000; $lowerShortWeight++) {
+			// calculate blended hashrate estimate
+			foreach ($realHashrates as $blockHeight => $hashrate) {
+				// only start $trailingBlocks blocks into our data since we use a window of past $trailingBlocks blocks of estimates
+				if ($blockHeight < $startHeight + $trailingBlocks) {
+					continue;
+				}
+				$shortEstimate = $shortEstimates[$blockHeight];
+				$longEstimate = $longEstimates[$blockHeight];
 
-		// find how many of the recent short estimates have also been above/below the long estimate
-		// and weight the short estimate up to 50% for a blended estimate
-		if ($shortEstimate > $longEstimate) {
-			$higher = 0;
-			for ($i = $blockHeight - 100; $i < $blockHeight; $i++) {
-				if ($shortEstimates[$i] > $longEstimates[$i]) {
-					$higher++;
+				// if current short hashrate estimate is less than 1 std deviation from long estimate, ignore it
+				if (abs($longEstimate - $shortEstimate) / $longEstimate < 0.06) {
+					$blendedEstimate = $longEstimate;
+				} else {
+					$shortWeight = 0;
+
+					// find how many of the recent short estimates have also been above/below the long estimate
+					// and weight the short estimate
+					if ($shortEstimate > $longEstimate) {
+						$higher = 0;
+						for ($i = $blockHeight - $trailingBlocks; $i < $blockHeight; $i++) {
+							if ($shortEstimates[$i] > $longEstimates[$i]) {
+								$higher++;
+							}
+						}
+						$shortWeight = $higher / $higherShortWeight;
+					} else {
+						$lower = 0;
+						for ($i = $blockHeight - $trailingBlocks; $i < $blockHeight; $i++) {
+							if ($shortEstimates[$i] < $longEstimates[$i]) {
+								$lower++;
+							}
+						}
+						// TODO exclude if it was only lower the vast majority of the period
+						$shortWeight = $lower / $lowerShortWeight;
+					}
+					$blendedEstimate = $longEstimate * (1 - $shortWeight) + $shortEstimate * $shortWeight;
 				}
+				$blendedEstimates[$blockHeight] = $blendedEstimate;
+
+				// calculate the relative error rates for the new blended estimates
+				$errorRate = number_format(abs($realHashrates[$blockHeight] - $blendedEstimate) / $realHashrates[$blockHeight], 2, '.', '') * 100;
+				$errorRates[$blockHeight] = $errorRate;
 			}
-			$shortWeight = $higher / 300;
-		} else {
-			$lower = 0;
-			for ($i = $blockHeight - 100; $i < $blockHeight; $i++) {
-				if ($shortEstimates[$i] < $longEstimates[$i]) {
-					$lower++;
-				}
+
+			// calculate the average error for the new blended estimates
+			$sum = array_sum($errorRates);
+			$count = count($errorRates);
+			$average = $sum / $count;
+
+			// calculate the standard deviation for the new blended estimates
+			$deviationSquares = array();
+			foreach ($errorRates as $errorRate) {
+				$deviationSquares[] = ($errorRate - $average) ** 2;
 			}
-			if ($lower >= 90) {
-				$shortWeight = $lower / 400;
-			}
+
+			$stdDeviation = sqrt(array_sum($deviationSquares) / $count);
+			//foreach ($blendedEstimates as $blockHeight => $hashrate) {
+				//echo "$blockHeight,$hashrate\n";
+			//}
+			echo "$trailingBlocks,$higherShortWeight,$lowerShortWeight,$average,$stdDeviation\n";
 		}
-		$blendedEstimate = $longEstimate * (1 - $shortWeight) + $shortEstimate * $shortWeight;
 	}
-	$blendedEstimates[$blockHeight] = $blendedEstimate;
-
-	// calculate the relative error rates for the new blended estimates
-	$errorRate = number_format(abs($realHashrates[$blockHeight] - $blendedEstimate) / $realHashrates[$blockHeight], 2, '.', '') * 100;
-	$errorRates[$blockHeight] = $errorRate;
 }
-
-// calculate the average error for the new blended estimates
-$sum = array_sum($errorRates);
-$count = count($errorRates);
-$average = $sum / $count;
-
-// calculate the standard deviation for the new blended estimates
-$deviationSquares = array();
-foreach ($errorRates as $errorRate) {
-	$deviationSquares[] = ($errorRate - $average) ** 2;
-}
-
-$stdDeviation = sqrt(array_sum($deviationSquares) / $count);
-foreach ($blendedEstimates as $blockHeight => $hashrate) {
-	//echo "$blockHeight,$hashrate\n";
-}
-echo "Average error rate: $average\n";
-echo "Standard deviation: $stdDeviation\n";
