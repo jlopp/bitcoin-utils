@@ -26,8 +26,8 @@ $estimateStdDev = array(100 => 6.23,
 						900 => 3.01
 						);
 
-// Start off giving a 10% weight to the 1,000 trailing block estimate
-$longEstimate = $bitcoind->getNetworkHashPS(1000, $blockHeight)->get();
+// Start off giving a 10% weight to the 1,100 trailing block estimate
+$longEstimate = $bitcoind->getNetworkHashPS(1100, $blockHeight)->get();
 $blendedEstimate = $longEstimate * 0.1;
 
 for ($trailingBlocks = 100; $trailingBlocks < 1000; $trailingBlocks += 100) {
@@ -42,7 +42,7 @@ for ($trailingBlocks = 100; $trailingBlocks < 1000; $trailingBlocks += 100) {
 		if ($shortEstimate > $longEstimate) {
 			$higher = 0;
 			for ($height = $blockHeight - $trailingBlocks; $height < $blockHeight; $height++) {
-				if ($bitcoind->getNetworkHashPS(1000, $height)->get() > $longEstimate) {
+				if ($bitcoind->getNetworkHashPS($trailingBlocks, $height)->get() > $longEstimate) {
 					$higher++;
 				}
 			}
