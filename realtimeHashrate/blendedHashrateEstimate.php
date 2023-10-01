@@ -26,9 +26,9 @@ $estimateStdDev = array(100 => 6.23,
 						900 => 3.01
 						);
 
-// Start off giving a 5% weight to the 1,000 trailing block estimate
+// Start off giving a 10% weight to the 1,000 trailing block estimate
 $longEstimate = $bitcoind->getNetworkHashPS(1000, $blockHeight)->get();
-$blendedEstimate = $longEstimate * 0.05;
+$blendedEstimate = $longEstimate * 0.1;
 
 for ($trailingBlocks = 100; $trailingBlocks < 1000; $trailingBlocks += 100) {
 	$shortEstimate = $bitcoind->getNetworkHashPS($trailingBlocks, $blockHeight)->get();

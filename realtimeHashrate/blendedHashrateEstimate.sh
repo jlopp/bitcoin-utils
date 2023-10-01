@@ -20,9 +20,9 @@ declare -A estimateStdDev=(
     [900]=3.01
 )
 
-# Start off giving a 5% weight to the 1,000 trailing block estimate
+# Start off giving a 10% weight to the 1,000 trailing block estimate
 longEstimate=$(bitcoin-cli getnetworkhashps 1000 "$blockHeight" | awk -FE 'BEGIN{OFMT="%20"} {print $1 * (10 ^ $2)}')
-blendedEstimate=$(echo "$longEstimate * 0.05" | bc -l)
+blendedEstimate=$(echo "$longEstimate * 0.1" | bc -l)
 
 for ((trailingBlocks=100; trailingBlocks<1000; trailingBlocks+=100)); do
     shortEstimate=$(bitcoin-cli getnetworkhashps "$trailingBlocks" "$blockHeight" | awk -FE 'BEGIN{OFMT="%20"} {print $1 * (10 ^ $2)}')
