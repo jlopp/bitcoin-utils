@@ -6,10 +6,11 @@ require 'vendor/autoload.php';
 use Denpa\Bitcoin\Client as BitcoinClient;
 
 $bitcoind = new BitcoinClient('http://user:password@localhost:8332/');
-$startHeight = $height = 400000; // start height
+$startHeight = $height = 817000; // start height
 $maxBlockHeight = $bitcoind->getBlockchaininfo()->get('blocks');
 $heightRange = $maxBlockHeight - $height;
 $txByBlock = array();
+$wuByBlock = array();
 
 // initialize start block vars
 $currentBlockHash = $bitcoind->getBlockhash($height)->get();
@@ -19,10 +20,15 @@ $height++;
 while ($height < $maxBlockHeight) {
 	$block = $bitcoind->getBlock($block->get('nextblockhash'), 2);
 	$txByBlock[$height] = 0;
+	$wuByBlock[$height] = 0;
 
 	foreach ($block->get('tx') as $transaction) {
 		if (count($transaction['vin']) >= 5 && count($transaction['vin']) == count($transaction['vout'])) {
 			$txByBlock[$height]++;
+			$wuByBlock[$height] += $transaction['weight'];
+		} else if (count($transaction['vin']) >= 50 && count($transaction['vout']) >= 50) {
+			$txByBlock[$height]++;			
+			$wuByBlock[$height] += $transaction['weight'];
 		}
 	}
 
@@ -35,7 +41,7 @@ while ($height < $maxBlockHeight) {
 
 ksort($txByBlock);
 
-echo "Block Height, CoinJoin Transactions:\n";
+echo "Block Height, CoinJoin Transactions, CoinJoin Weight Units\n";
 foreach ($txByBlock as $height => $count) {
-	echo "$height,$count\n";
+	echo "$height,$count," . $weByBlock[$height] . "\n";
 }
