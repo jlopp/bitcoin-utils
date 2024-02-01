@@ -75,3 +75,30 @@ for ($week = 0; $week < 200; $week++) {
 	}
 	echo "\n";
 }
+
+// find peak node count for each user agent and determine
+// how many weeks it took for 95% of those nodes to upgrade versions
+foreach ($userAgentLongevity as $version => $snapshots) {
+
+	$maxCount = 0;
+	$maxWeek = 0;
+	$totalWeeks = 0;
+	foreach ($snapshots as $week => $snapshot) {
+		if ($snapshot[1] > $maxCount) {
+			$maxCount = $snapshot[1];
+			$maxWeek = $week;
+		}
+	}
+
+	// find the first week at which count is <= 5% of $maxCount
+	foreach ($snapshots as $week => $snapshot) {
+		if ($week < $maxWeek) {
+			continue;
+		}
+		if ($snapshot[1] <= $maxCount*0.05) {
+			$totalWeeks = $week - $maxWeek;
+		}
+	}
+
+	echo "$version, $totalWeeks\n";
+}
