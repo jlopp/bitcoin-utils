@@ -97,6 +97,7 @@ foreach ($userAgentLongevity as $version => $snapshots) {
 		}
 		if ($snapshot[1] <= $maxCount*0.05) {
 			$totalWeeks = $week - $maxWeek;
+			break;
 		}
 	}
 
