@@ -3,20 +3,21 @@
 // This script reads block audit data from mempool.space and dumps out metrics on blocks
 // containing transactions that have never been seen before showing up in the block
 
-require 'vendor/autoload.php';
-
-use Denpa\Bitcoin\Client as BitcoinClient;
-
-$bitcoind = new BitcoinClient('http://user:password@localhost:8332/');
 $currentBlockHeight = 855420; // first block mempool.space started tracking unseen transactions
-$maxHeight = $bitcoind->getBlockchaininfo()->get('blocks');
+$currentBlockHeight = 862270;
+$maxHeight = 868400;
 $blockPools = array();
 $ch = curl_init();
+curl_setopt($ch, CURLOPT_HEADER, 0);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, TRUE);
+curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 0);
+curl_setopt($ch, CURLOPT_TIMEOUT, 30);
 
 echo "height,hash,pool,unseenTxnCount,nonstandardCount,OP_RETURN Count,inscriptionCount\n";
 
 for (;$currentBlockHeight < $maxHeight; $currentBlockHeight++) {
-	$currentBlockHash = $bitcoind->getBlockhash($currentBlockHeight)->get();
+	curl_setopt($ch, CURLOPT_URL, "https://mempool.space/api/block-height/$currentBlockHeight");
+	$currentBlockHash = curl_exec($ch);
 
 	// since different servers have different mempools, use the response with the fewest unseen txns
 	$auditSummary = null;
