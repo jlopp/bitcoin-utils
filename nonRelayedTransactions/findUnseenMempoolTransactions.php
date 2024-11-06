@@ -4,7 +4,6 @@
 // containing transactions that have never been seen before showing up in the block
 
 $currentBlockHeight = 855420; // first block mempool.space started tracking unseen transactions
-$currentBlockHeight = 862270;
 $maxHeight = 868400;
 $blockPools = array();
 $ch = curl_init();
@@ -40,7 +39,7 @@ for (;$currentBlockHeight < $maxHeight; $currentBlockHeight++) {
 		}
 
 		// if any server has 0 unseen, that's the lowest. we can skip further checks.
-		if (count($audit->unseenTxs) == 0) {
+		if (!isset($audit->unseenTxs) || count($audit->unseenTxs) == 0) {
 			$auditSummary == null;
 			break;
 		}
