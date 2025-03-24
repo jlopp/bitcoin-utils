@@ -1,7 +1,7 @@
 from coinmetrics.api_client import CoinMetricsClient
 from datetime import timedelta
 
-client = CoinMetricsClient('iRM6QuRqkqliOYav14Ln')
+client = CoinMetricsClient('API_KEY')
 
 if __name__ == '__main__':
 	tx_tracker = client.get_transaction_tracker(

@@ -2,6 +2,9 @@
 
 // This script reads from proprietary JSON files containing lists of transaction hashes that were
 // confirmed in blocks but not seen in the mempool
+
+// https://mempool.space/docs/api/rest#get-blocks-bulk get mining pools
+// https://b10c.me/observations/09-non-standard-transactions/ notes on non-standard txns
 require 'vendor/autoload.php';
 
 use Denpa\Bitcoin\Client as BitcoinClient;
@@ -71,31 +74,6 @@ function processBlock($json) {
 
 	$missingTransactionCount = count($json["txids"]);
 	$allBlocks[$block["height"]] = $missingTransactionCount;
-
-/*
-	foreach ($block->get('tx') as $transaction) {
-		// Ignore coinbase transactions
-		if (isset($transaction['vin'][0]['coinbase'])) {
-			continue;
-		}
-print_r($transaction);exit;
-		// check if the transaction is standard
-		// Search for outputs containing OP_RETURN in the scriptPubKey asm
-		foreach ($transaction['vout'] as $output) {
-		    if (isset($output['scriptPubKey']['asm']) && strpos($output['scriptPubKey']['asm'], 'OP_RETURN') !== false) {
-		        $has_op_return = true;
-		        echo "Transaction has an OP_RETURN output: " . $output['scriptPubKey']['hex'] . "\n";
-		        break;
-		    }
-		}
-		// check if transaction is inscription
-		if (count($transaction['vin'][0]->txinwitness[1]) == 3 
-			&& strlen($transaction['vin'][0]->txinwitness[1]) > 500
-			&& $transaction['vin'][0]->prevout->scriptPubKey->type == "witness_v1_taproot") {
-			
-		}
-	}
-	*/
 }
 
 
@@ -106,6 +84,3 @@ echo "Block Height,Missing Txns:\n";
 foreach ($allBlocks as $height => $count) {
 	echo "$height,$count\n";
 }
-
-// https://mempool.space/docs/api/rest#get-blocks-bulk get mining pools
-// https://b10c.me/observations/09-non-standard-transactions/ notes on non-standard txns
