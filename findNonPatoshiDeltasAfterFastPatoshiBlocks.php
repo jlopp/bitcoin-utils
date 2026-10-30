@@ -27,7 +27,7 @@ foreach ($patoshiBlocks as $blockHeight) {
 
 			$patoshiBlock2Hash = $bitcoind->getBlockHash($currentStreakBlocks[array_key_last($currentStreakBlocks)]);
 			$patoshiBlock2 = $bitcoind->getBlock("$patoshiBlock2Hash");
-			$patoshiBlock2Time = $patoshiBlock1->get('time');
+			$patoshiBlock2Time = $patoshiBlock2->get('time');
 
 			if ($patoshiBlock2Time < $patoshiBlock1Time + 600) {
 				$nonPatoshiBlockHeight = $currentStreakBlocks[array_key_last($currentStreakBlocks)] + 1;
